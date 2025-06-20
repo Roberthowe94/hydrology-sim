@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPS-Based Hydrology Model Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- LeafletJS for Map Display -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <style>
+        :root {
+            --color-bg: #0D1117;
+            --color-surface: #161B22;
+            --color-border: #30363D;
+            --color-text: #C9D1D9;
+            --color-text-secondary: #8B949E;
+            --color-primary: #1FB8CD;
+            --color-primary-dark: #1A9CB0;
+            --color-success: #2ECC71;
+            --color-error: #E87979;
+            --font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--color-bg);
+            color: var(--color-text);
+            margin: 0;
+            line-height: 1.6;
+        }
+        
+        .background-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: -1;
+        }
+
+        .gradient-orb {
+            position: absolute;
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, rgba(31, 184, 205, 0.2), transparent 70%);
+            border-radius: 50%;
+            animation: moveOrb 20s infinite linear;
+        }
+
+        .orb1 { top: -10%; left: -10%; animation-duration: 25s; }
+        .orb2 { bottom: -20%; right: -15%; animation-duration: 30s; }
+        .orb3 { top: 50%; left: 50%; animation-duration: 18s; }
+
+        @keyframes moveOrb {
+            0%, 100% { transform: translate(0, 0); }
+            25% { transform: translate(40vw, 20vh); }
+            50% { transform: translate(-10vw, -30vh); }
+            75% { transform: translate(-30vw, 10vh); }
+        }
+
+        .main-container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .glass-header {
+            background: rgba(13, 17, 23, 0.6);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--color-border);
+            padding: 1rem 2rem;
+            border-radius: 12px;
+            text-align: center;
+            margin-bottom: 2rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+
+        .glass-header h1 {
+            margin: 0;
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--color-primary);
+        }
+        
+        .progress-indicator {
+            background: rgba(22, 27, 34, 0.6);
+            backdrop-filter: blur(5px);
+            border: 1px solid var(--color-border);
+            padding: 1.5rem;
+            border-radius: 12px;
+            margin-bottom: 2rem;
+        }
+        .steps { display: flex; justify-content: space-between; position: relative; margin-bottom: 1rem; }
+        .step { text-align: center; width: 25%; }
+        .step .step-icon {
+             width: 40px; height: 40px; background: var(--color-border); border-radius: 50%; 
+             display: flex; align-items: center; justify-content: center; 
+             margin: 0 auto 0.5rem; transition: all 0.3s ease;
+        }
+        .step.active .step-icon { background: var(--color-primary); transform: scale(1.1); color: var(--color-bg)}
+        .step.completed .step-icon { background: var(--color-success); color: var(--color-bg)}
+        .progress-bar-container { background: var(--color-border); height: 4px; border-radius: 2px; overflow: hidden; }
+        .progress-fill { width: 0%; height: 100%; background: var(--color-primary); transition: width 0.5s ease; }
+
+
+        .card {
+            background: rgba(22, 27, 34, 0.6);
+            backdrop-filter: blur(5px);
+            border: 1px solid var(--color-border);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            transition: all 0.3s ease-in-out;
+        }
+        .btn-primary {
+            background-color: var(--color-primary);
+            color: var(--color-bg);
+            font-weight: 600;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: none;
+        }
+        .btn-primary:hover:not(:disabled) {
+            background-color: var(--color-primary-dark);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(31, 184, 205, 0.3);
+        }
+        .btn-primary:disabled {
+            background-color: var(--color-border);
+            color: var(--color-text-secondary);
+            cursor: not-allowed;
+        }
+        .btn-secondary {
+            background-color: var(--color-success);
+        }
+        .btn-secondary:hover {
+            background-color: #27ae60;
+        }
+        
+        .input-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--color-text-secondary);
+            font-weight: 500;
+        }
+        .input-field, .select-field {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--color-border);
+            border-radius: 0.5rem;
+            background-color: var(--color-bg);
+            color: var(--color-text);
+        }
+        input:disabled, select:disabled {
+            background-color: #222;
+            cursor: not-allowed;
+        }
+        .loader {
+            border: 4px solid var(--color-border);
+            border-top: 4px solid var(--color-primary);
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            margin-left: 0.75rem;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .tab-button {
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+        .tab-button.active {
+            background-color: var(--color-primary);
+            color: var(--color-bg);
+        }
+        .tab-button:not(.active) {
+            background-color: transparent;
+            color: var(--color-text-secondary);
+            border-color: var(--color-border);
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        
+        #map-input, #map {
+            height: 250px;
+            width: 100%;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+            border: 1px solid var(--color-border);
+            background-color: var(--color-bg);
+        }
+        #map {
+            height: 100%;
+        }
+        .leaflet-pane, .leaflet-tile, .leaflet-marker-icon, .leaflet-marker-shadow, .leaflet-popup {
+            filter: brightness(0.8) contrast(1.1);
+        }
+        .legend {
+            background: rgba(22, 27, 34, 0.7);
+            backdrop-filter: blur(5px);
+            padding: 10px;
+            border-radius: 5px;
+            line-height: 1.4;
+            font-size: 0.8rem;
+            color: var(--color-text);
+            border: 1px solid var(--color-border);
+        }
+        .legend i {
+            width: 18px;
+            height: 18px;
+            float: left;
+            margin-right: 8px;
+        }
+         .legend .line {
+            height: 10px;
+            border-top: 3px solid;
+         }
+         .legend .dashed-line {
+            height: 10px;
+            border-top: 3px dashed;
+         }
+         .results-metric-grid {
+             display: grid;
+             grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+             gap: 1rem;
+             margin-bottom: 1.5rem;
+         }
+         .metric-card {
+            background-color: var(--color-bg);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            text-align: center;
+            border: 1px solid var(--color-border);
+         }
+         .metric-card-label {
+             font-size: 0.875rem;
+             color: var(--color-text-secondary);
+             margin-bottom: 0.25rem;
+         }
+         .metric-card-value {
+             font-size: 1.75rem;
+             font-weight: 700;
+             color: var(--color-primary);
+         }
+    </style>
+</head>
+<body class="text-gray-200">
+
+    <div class="background-container">
+        <div class="gradient-orb orb1"></div>
+        <div class="gradient-orb orb2"></div>
+    </div>
+
+    <div class="main-container">
+        <header class="glass-header">
+            <h1>GPS-Based Hydrology Simulator</h1>
+        </header>
+
+        <div id="progress-indicator" class="progress-indicator">
+             <div class="steps">
+                <div class="step active" id="step-1">
+                    <div class="step-icon">1</div>
+                    <div class="step-label">Location</div>
+                </div>
+                <div class="step" id="step-2">
+                    <div class="step-icon">2</div>
+                    <div class="step-label">Data Fetch</div>
+                </div>
+                <div class="step" id="step-3">
+                    <div class="step-icon">3</div>
+                    <div class="step-label">Simulation</div>
+                </div>
+                <div class="step" id="step-4">
+                    <div class="step-icon">4</div>
+                    <div class="step-label">Results</div>
+                </div>
+            </div>
+            <div class="progress-bar-container">
+                <div class="progress-fill"></div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Input Parameters Section -->
+            <div class="lg:col-span-1">
+                <div class="card space-y-6">
+                    <div>
+                        <h2 class="text-xl font-semibold mb-4 text-primary">1. Select Location</h2>
+                        <div id="map-input"></div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label for="latitude" class="input-label">Latitude</label>
+                                <input type="number" id="latitude" placeholder="e.g., 42.65" class="input-field" step="any">
+                            </div>
+                            <div>
+                                <label for="longitude" class="input-label">Longitude</label>
+                                <input type="number" id="longitude" placeholder="e.g., -73.75" class="input-field" step="any">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="border-t border-border pt-6">
+                        <h2 class="text-xl font-semibold mb-4 text-primary">2. Fetch & Simulate</h2>
+                        <button id="fetchDataBtn" class="w-full btn-primary btn-secondary">
+                            <span>Fetch Data</span>
+                            <div id="fetchLoader" class="loader hidden"></div>
+                        </button>
+                        <div id="locationInfo" class="text-center text-sm text-text-secondary mt-2 h-6"></div>
+                    </div>
+
+                    <div id="modelParameters" class="hidden border-t border-border pt-6 space-y-4">
+                        <h3 class="text-xl font-semibold text-primary">3. Simulation Parameters</h3>
+                        <div>
+                            <label for="watershedArea" class="input-label">Watershed Area (<span id="areaValue">50</span> km²)</label>
+                            <input type="range" id="watershedArea" min="1" max="500" value="50" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                        </div>
+                        <div>
+                            <label for="landUse" class="input-label">Land Use (Auto-Estimated)</label>
+                            <select id="landUse" class="select-field"></select>
+                        </div>
+                        <div>
+                            <label for="soilType" class="input-label">Soil Type (Auto-Estimated)</label>
+                            <select id="soilType" class="select-field"></select>
+                        </div>
+                         <div>
+                            <label for="rainfallAmount" class="input-label">Rainfall Amount (<span id="rainfallValue">0</span> mm)</label>
+                            <input type="range" id="rainfallAmount" min="0" max="150" value="0" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                        </div>
+                        <div>
+                            <label for="rainfallDuration" class="input-label">Rainfall Duration (<span id="durationValue">1</span> hours)</label>
+                            <input type="range" id="rainfallDuration" min="1" max="24" value="1" class="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer">
+                        </div>
+                         <button id="runModelBtn" class="w-full btn-primary" disabled>
+                            <span>Run Simulation</span>
+                            <div id="runLoader" class="loader hidden"></div>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Output & Visualization Section -->
+            <div class="lg:col-span-2">
+                <div class="card h-full">
+                    <div class="flex justify-between items-center border-b border-border pb-4 mb-4">
+                        <h2 class="text-2xl font-semibold text-primary">Results</h2>
+                        <div id="tabs" class="flex space-x-2 hidden">
+                            <button id="showMapBtn" class="tab-button">Runoff Map</button>
+                            <button id="showChartBtn" class="tab-button">Hydrograph</button>
+                        </div>
+                    </div>
+                    
+                    <div id="resultsContent" class="hidden">
+                         <div class="results-metric-grid">
+                            <div class="metric-card">
+                                <p class="metric-card-label">Runoff Coeff. (C)</p>
+                                <p id="runoffCoeff" class="metric-card-value">-</p>
+                            </div>
+                            <div class="metric-card">
+                                <p class="metric-card-label">Runoff Volume</p>
+                                <p id="runoffVolume" class="metric-card-value">-</p>
+                            </div>
+                            <div class="metric-card">
+                                <p class="metric-card-label">Peak Flow (Qp)</p>
+                                <p id="peakFlow" class="metric-card-value">-</p>
+                            </div>
+                        </div>
+                        <div class="w-full h-[550px]">
+                             <div id="chartContainer" class="tab-content h-full w-full">
+                                <canvas id="hydrographChart"></canvas>
+                             </div>
+                             <div id="mapContainer" class="tab-content h-full w-full relative">
+                                <div id="map"></div>
+                             </div>
+                        </div>
+                    </div>
+                     <div id="initialMessage" class="text-center flex flex-col items-center justify-center h-full text-text-secondary">
+                         <svg class="w-16 h-16 text-border mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path></svg>
+                         <p>Results will be displayed here after running a simulation.</p>
+                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // --- Global Variables & DOM Elements ---
+        const dom = {
+            latInput: document.getElementById('latitude'),
+            lonInput: document.getElementById('longitude'),
+            fetchDataBtn: document.getElementById('fetchDataBtn'),
+            runModelBtn: document.getElementById('runModelBtn'),
+            watershedAreaInput: document.getElementById('watershedArea'),
+            landUseInput: document.getElementById('landUse'),
+            soilTypeInput: document.getElementById('soilType'),
+            rainfallAmountInput: document.getElementById('rainfallAmount'),
+            rainfallDurationInput: document.getElementById('rainfallDuration'),
+            areaValueSpan: document.getElementById('areaValue'),
+            rainfallValueSpan: document.getElementById('rainfallValue'),
+            durationValueSpan: document.getElementById('durationValue'),
+            runoffCoeffOutput: document.getElementById('runoffCoeff'),
+            runoffVolumeOutput: document.getElementById('runoffVolume'),
+            peakFlowOutput: document.getElementById('peakFlow'),
+            resultsContent: document.getElementById('resultsContent'),
+            initialMessage: document.getElementById('initialMessage'),
+            fetchLoader: document.getElementById('fetchLoader'),
+            runLoader: document.getElementById('runLoader'),
+            fetchBtnText: document.querySelector('#fetchDataBtn span'),
+            runBtnText: document.querySelector('#runModelBtn span'),
+            locationInfo: document.getElementById('locationInfo'),
+            tabs: document.getElementById('tabs'),
+            showChartBtn: document.getElementById('showChartBtn'),
+            showMapBtn: document.getElementById('showMapBtn'),
+            chartContainer: document.getElementById('chartContainer'),
+            mapContainer: document.getElementById('mapContainer'),
+            map: document.getElementById('map'),
+            hydrographChart: document.getElementById('hydrographChart'),
+            modelParameters: document.getElementById('modelParameters'),
+            mapInput: document.getElementById('map-input'),
+            progressIndicator: document.getElementById('progress-indicator')
+        };
+
+        let hydrographChart, map, inputMap, selectionMarker, propertyMarker, flowPathLayer, poolingLayer, mainFlowPathLayer, mapLegend;
+        let currentElevationData;
+        const landUseTypes = [
+            {value: "forest", label: "Forested", coefficient: {sandy: 0.10, loam: 0.20, clay: 0.30}},
+            {value: "agriculture", label: "Agriculture", coefficient: {sandy: 0.25, loam: 0.40, clay: 0.55}},
+            {value: "urban", label: "Urban", coefficient: {sandy: 0.60, loam: 0.75, clay: 0.90}}
+        ];
+        const soilTypes = [
+            {value: "sandy", label: "Sandy"}, {value: "loam", label: "Loam"}, {value: "clay", label: "Clay"}
+        ];
+
+        // --- Initialization ---
+        function init() {
+            populateSelects();
+            initializeInputMap();
+            setupEventListeners();
+            updateProgress(1);
+        }
+
+        function populateSelects() {
+            landUseTypes.forEach(o => dom.landUseInput.add(new Option(o.label, o.value)));
+            soilTypes.forEach(o => dom.soilTypeInput.add(new Option(o.label, o.value)));
+        }
+
+        function setupEventListeners() {
+            dom.watershedAreaInput.addEventListener('input', (e) => dom.areaValueSpan.textContent = e.target.value);
+            dom.rainfallAmountInput.addEventListener('input', (e) => dom.rainfallValueSpan.textContent = e.target.value);
+            dom.rainfallDurationInput.addEventListener('input', (e) => dom.durationValueSpan.textContent = e.target.value);
+            dom.fetchDataBtn.addEventListener('click', handleFetchData);
+            dom.runModelBtn.addEventListener('click', handleRunSimulation);
+            dom.showChartBtn.addEventListener('click', () => switchTab('chart'));
+            dom.showMapBtn.addEventListener('click', () => switchTab('map'));
+        }
+        
+        function updateProgress(stepNumber) {
+            dom.progressIndicator.querySelectorAll('.step').forEach((stepEl, index) => {
+                stepEl.classList.remove('active', 'completed');
+                if (index + 1 < stepNumber) {
+                    stepEl.classList.add('completed');
+                } else if (index + 1 === stepNumber) {
+                    stepEl.classList.add('active');
+                }
+            });
+            const progressFill = dom.progressIndicator.querySelector('.progress-fill');
+            progressFill.style.width = `${((stepNumber - 1) / 3) * 100}%`;
+        }
+
+        async function handleFetchData() {
+            const lat = dom.latInput.value;
+            const lon = dom.lonInput.value;
+            if (!lat || !lon) {
+                showError('Please click the map to select a location first.');
+                return;
+            }
+            updateProgress(2);
+            setLoading(true, 'fetch');
+            try {
+                const [locationData, weatherData] = await Promise.all([
+                    fetchApi(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`),
+                    fetchApi(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&hourly=precipitation&past_days=1&forecast_days=0`),
+                ]);
+                processLocationData(locationData);
+                processWeatherData(weatherData);
+                enableControls();
+                dom.initialMessage.classList.add('hidden');
+                dom.resultsContent.classList.add('hidden');
+                dom.tabs.classList.add('hidden');
+                updateProgress(3);
+            } catch (error) {
+                console.error("Error fetching data:", error);
+                let userMessage = 'Failed to fetch data. ';
+                if (error.message.includes('Network')) {
+                    userMessage += 'An API service may be down. Please try again later.';
+                } else {
+                    userMessage += 'An unexpected error occurred.';
+                }
+                showError(userMessage);
+                updateProgress(1);
+            } finally {
+                setLoading(false, 'fetch');
+            }
+        }
+
+        async function handleRunSimulation() {
+            setLoading(true, 'run');
+            try {
+                const lat = parseFloat(dom.latInput.value);
+                const lon = parseFloat(dom.lonInput.value);
+                const areaKm2 = parseFloat(dom.watershedAreaInput.value);
+                const landUse = dom.landUseInput.value;
+                const soilType = dom.soilTypeInput.value;
+                const rainfallMm = parseFloat(dom.rainfallAmountInput.value);
+                const durationHr = parseFloat(dom.rainfallDurationInput.value);
+                
+                currentElevationData = await fetchElevationData(lat, lon);
+                initializeOutputMap(lat, lon);
+
+                const C = calculateRunoffCoefficient(landUse, soilType);
+                const { runoffVolumeM3, peakFlowM3s } = calculateRunoff(C, areaKm2, rainfallMm, durationHr);
+
+                updateUIDisplays(C, runoffVolumeM3, peakFlowM3s);
+                generateHydrograph(peakFlowM3s, durationHr);
+                visualizeRunoffOnMap(currentElevationData, C, {lat, lon});
+                
+                dom.resultsContent.classList.remove('hidden');
+                dom.tabs.classList.remove('hidden');
+                switchTab('map');
+                updateProgress(4);
+            } catch (error) {
+                console.error("Error during simulation:", error);
+                showError("An error occurred during the simulation run. Please try again.");
+                updateProgress(3);
+            } finally {
+                setLoading(false, 'run');
+            }
+        }
+
+        // --- UI & State Management ---
+        function setLoading(isLoading, type) {
+            const btn = type === 'fetch' ? dom.fetchDataBtn : dom.runModelBtn;
+            const loader = type === 'fetch' ? dom.fetchLoader : dom.runLoader;
+            const text = type === 'fetch' ? dom.fetchBtnText : dom.runBtnText;
+            
+            btn.disabled = isLoading;
+            loader.classList.toggle('hidden', !isLoading);
+            if(type === 'fetch') text.textContent = isLoading ? 'Fetching...' : 'Fetch Data';
+            if(type === 'run') text.textContent = isLoading ? 'Simulating...' : 'Run Simulation';
+        }
+
+        function enableControls() {
+            dom.modelParameters.classList.remove('hidden');
+            dom.runModelBtn.disabled = false;
+        }
+        
+        function updateUIDisplays(C, volume, peak) {
+             dom.runoffCoeffOutput.textContent = C.toFixed(2);
+             dom.runoffVolumeOutput.textContent = `${(volume / 1e6).toFixed(2)} M m³`;
+             dom.peakFlowOutput.textContent = `${peak.toFixed(2)} m³/s`;
+        }
+
+        function switchTab(tab) {
+            const isMap = tab === 'map';
+            dom.mapContainer.classList.toggle('active', isMap);
+            dom.chartContainer.classList.toggle('active', !isMap);
+            dom.showMapBtn.classList.toggle('active', isMap);
+            dom.showChartBtn.classList.toggle('active', !isMap);
+            if (isMap && map) setTimeout(() => map.invalidateSize(), 10);
+        }
+        
+        function showError(message) {
+             dom.locationInfo.textContent = message;
+             dom.locationInfo.classList.add('text-red-500');
+             setTimeout(() => {
+                dom.locationInfo.textContent = '';
+                dom.locationInfo.classList.remove('text-red-500');
+             }, 5000)
+        }
+
+        // --- Data Fetching & Processing ---
+        async function fetchApi(url) {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`Network response was not ok for ${url}`);
+            return response.json();
+        }
+
+        async function fetchElevationData(lat, lon) {
+            const locations = [];
+            const gridSize = 40; 
+            const radius = 0.05;
+            for (let i = 0; i < gridSize; i++) {
+                for (let j = 0; j < gridSize; j++) {
+                    locations.push({
+                        latitude: parseFloat(lat) - radius + (i * 2 * radius / gridSize),
+                        longitude: parseFloat(lon) - radius + (j * 2 * radius / gridSize)
+                    });
+                }
+            }
+            const response = await fetch('https://api.open-elevation.com/api/v1/lookup', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json', 'Accept': 'application/json'},
+                body: JSON.stringify({ locations })
+            });
+            if (!response.ok) throw new Error('Elevation API request failed.');
+            return await response.json();
+        }
+        
+        function processLocationData(data) {
+            dom.locationInfo.textContent = data.display_name || 'Location details not found.';
+            dom.locationInfo.classList.remove('text-red-500');
+            const type = data.type;
+            const address = data.address || {};
+            if (['city', 'town', 'village', 'suburb', 'residential'].includes(type) || address.city || address.town) {
+                dom.landUseInput.value = 'urban';
+            } else if (['farm', 'farmland', 'field'].includes(type)) {
+                 dom.landUseInput.value = 'agriculture';
+            } else {
+                dom.landUseInput.value = 'forest';
+            }
+            const country_code = address.country_code;
+            if (['us', 'ca', 'mx'].includes(country_code)) { dom.soilTypeInput.value = 'loam'; } 
+            else if (country_code === 'au') { dom.soilTypeInput.value = 'sandy'; } 
+            else { dom.soilTypeInput.value = 'clay'; }
+        }
+
+        function processWeatherData(data) {
+            const precipitation = data.hourly.precipitation || [];
+            const totalPrecipitation = precipitation.reduce((sum, val) => sum + val, 0);
+            const activeRainHours = precipitation.filter(p => p > 0).length;
+            dom.rainfallAmountInput.value = totalPrecipitation.toFixed(1);
+            dom.rainfallValueSpan.textContent = totalPrecipitation.toFixed(1);
+            dom.rainfallDurationInput.value = activeRainHours > 0 ? activeRainHours : 1;
+            dom.durationValueSpan.textContent = activeRainHours > 0 ? activeRainHours : 1;
+        }
+        
+        function calculateRunoffCoefficient(landUse, soilType) {
+            const lu = landUseTypes.find(l => l.value === landUse);
+            return lu.coefficient[soilType];
+        }
+
+        function calculateRunoff(C, areaKm2, rainfallMm, durationHr) {
+            const areaM2 = areaKm2 * 1e6;
+            const rainfallM = rainfallMm / 1000;
+            const runoffVolumeM3 = areaM2 * rainfallM * C;
+            const durationS = durationHr > 0 ? durationHr * 3600 : 3600;
+            const intensityMs = rainfallM / durationS;
+            const peakFlowM3s = C * intensityMs * areaM2;
+            return { runoffVolumeM3, peakFlowM3s };
+        }
+
+        function generateHydrograph(peakFlow, duration) {
+            const canvasElement = dom.hydrographChart;
+            if (!canvasElement) return;
+            
+            const effectiveDuration = Math.max(duration, 1);
+            const timeToPeak = effectiveDuration * 0.75;
+            const baseTime = effectiveDuration * 2.5;
+            const timeStep = baseTime > 0 ? baseTime / 20 : 0.5;
+            const labels = [];
+            const data = [];
+            for (let t = 0; t <= baseTime; t += timeStep) {
+                labels.push(t.toFixed(1));
+                let flow = 0;
+                if (t <= timeToPeak) {
+                   if (timeToPeak > 0) flow = (peakFlow / timeToPeak) * t;
+                } else {
+                   if (baseTime > timeToPeak) flow = peakFlow * (1 - (t - timeToPeak) / (baseTime - timeToPeak));
+                }
+                data.push(Math.max(0, flow).toFixed(2));
+            }
+            if (hydrographChart) hydrographChart.destroy();
+            hydrographChart = new Chart(canvasElement.getContext('2d'), {
+                type: 'line',
+                data: { labels, datasets: [{ label: 'Runoff Hydrograph', data, borderColor: 'var(--color-primary)', backgroundColor: 'rgba(31, 184, 205, 0.1)', fill: true, tension: 0.4, pointRadius: 0 }] },
+                options: { responsive: true, maintainAspectRatio: false, scales: { x: { title: { display: true, text: 'Time (hours)', color: 'var(--color-text)' }, ticks: {color: 'var(--color-text-secondary)'}, grid: {color: 'var(--color-border)'} }, y: { beginAtZero: true, title: { display: true, text: 'Streamflow (m³/s)', color: 'var(--color-text)' }, ticks: {color: 'var(--color-text-secondary)'}, grid: {color: 'var(--color-border)'}} }, plugins: { legend: {labels: {color: 'var(--color-text)'}}, title: { display: true, text: 'Simulated Streamflow Hydrograph', font: { size: 16 }, color: 'var(--color-text)' }, tooltip: { mode: 'index', intersect: false } } }
+            });
+        }
+        
+        function initializeInputMap() {
+            inputMap = L.map(dom.mapInput).setView([20, 0], 2);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(inputMap);
+
+            inputMap.on('click', function(e) {
+                const { lat, lng } = e.latlng;
+                dom.latInput.value = lat.toFixed(4);
+                dom.lonInput.value = lng.toFixed(4);
+                if (selectionMarker) {
+                    selectionMarker.setLatLng(e.latlng);
+                } else {
+                    selectionMarker = L.marker(e.latlng).addTo(inputMap);
+                }
+            });
+        }
+
+        function initializeOutputMap(lat, lon) {
+             if (map) map.remove();
+             map = L.map(dom.map).setView([lat, lon], 12);
+             L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Tiles &copy; Esri'
+            }).addTo(map);
+            
+            if (mapLegend) mapLegend.remove();
+            mapLegend = L.control({position: 'bottomright'});
+            mapLegend.onAdd = function (map) {
+                const div = L.DomUtil.create('div', 'info legend');
+                div.innerHTML = `
+                    <h4>Map Legend</h4>
+                    <div><i style="background: url(https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png) no-repeat center center; background-size: contain; width: 12px; height: 20px;"></i> Selected Location</div>
+                    <div><i class="dashed-line" style="border-color: red;"></i> Main Flow Path</div>
+                    <div><i class="line" style="border-color: rgba(0, 51, 204, 0.7);"></i> Stream Network</div>
+                    <div><i style="background: #0033cc; border-radius: 50%;"></i> Water Pooling Area</div>
+                `;
+                return div;
+            };
+            mapLegend.addTo(map);
+
+            propertyMarker = L.marker([lat, lon]).addTo(map).bindPopup("<b>Selected Location</b>").openPopup();
+        }
+        
+        function visualizeRunoffOnMap(elevationData, C, selectedCoords) {
+            const gridSize = 40;
+            const elevationGrid = [];
+            for (let i = 0; i < gridSize; i++) {
+                const row = elevationData.results.slice(i * gridSize, (i + 1) * gridSize);
+                elevationGrid.push(row);
+            }
+
+            if (flowPathLayer) flowPathLayer.remove();
+            if (poolingLayer) poolingLayer.remove();
+            if (mainFlowPathLayer) mainFlowPathLayer.remove();
+
+            flowPathLayer = L.layerGroup().addTo(map);
+            poolingLayer = L.layerGroup().addTo(map);
+            mainFlowPathLayer = L.layerGroup().addTo(map);
+
+            const { flowDirection, sinks } = calculateFlowDirections(elevationGrid, gridSize);
+            const flowAccumulation = calculateFlowAccumulation(flowDirection, gridSize);
+            
+            drawStreamNetwork(elevationGrid, flowDirection, flowAccumulation, C, gridSize);
+            drawPoolingAreas(elevationGrid, sinks, flowAccumulation, gridSize);
+            drawMainFlowPath(elevationGrid, flowDirection, selectedCoords, gridSize);
+        }
+
+        function calculateFlowDirections(elevationGrid, gridSize) {
+            const flowDirection = Array(gridSize).fill(0).map(() => Array(gridSize).fill(null));
+            const sinks = [];
+            for (let r = 0; r < gridSize; r++) {
+                for (let c = 0; c < gridSize; c++) {
+                    const currentCell = elevationGrid[r][c];
+                    if (currentCell.elevation === null) continue;
+                    let lowestElev = currentCell.elevation;
+                    let nextStep = null;
+                    for (let dr = -1; dr <= 1; dr++) {
+                        for (let dc = -1; dc <= 1; dc++) {
+                            if (dr === 0 && dc === 0) continue;
+                            const nr = r + dr, nc = c + dc;
+                            if (nr >= 0 && nr < gridSize && nc >= 0 && nc < gridSize) {
+                                const neighborCell = elevationGrid[nr][nc];
+                                if (neighborCell.elevation !== null && neighborCell.elevation < lowestElev) {
+                                    lowestElev = neighborCell.elevation;
+                                    nextStep = { r: nr, c: nc };
+                                }
+                            }
+                        }
+                    }
+                    flowDirection[r][c] = nextStep;
+                    if (nextStep === null) sinks.push({ r, c });
+                }
+            }
+            return { flowDirection, sinks };
+        }
+
+        function calculateFlowAccumulation(flowDirection, gridSize) {
+            const flowAccumulation = Array(gridSize).fill(0).map(() => Array(gridSize).fill(1));
+            for (let r = 0; r < gridSize; r++) {
+                for (let c = 0; c < gridSize; c++) {
+                    let path = [], [curr_r, curr_c] = [r, c];
+                    while(flowDirection[curr_r] && flowDirection[curr_r][curr_c] !== null){
+                          const next = flowDirection[curr_r][curr_c];
+                          path.push(next);
+                          curr_r = next.r; curr_c = next.c;
+                          if (path.length > gridSize * gridSize) break;
+                    }
+                    path.forEach(p => { flowAccumulation[p.r][p.c] += 1; });
+                }
+            }
+            return flowAccumulation;
+        }
+
+        function drawStreamNetwork(elevationGrid, flowDirection, flowAccumulation, C, gridSize) {
+            const maxAccumulation = Math.max(...flowAccumulation.flat());
+            const streamThreshold = gridSize * 0.05; 
+            for (let r = 0; r < gridSize; r++) {
+                for (let c = 0; c < gridSize; c++) {
+                    const accumulation = flowAccumulation[r][c];
+                     if (accumulation > streamThreshold && flowDirection[r][c]) {
+                        const startPoint = elevationGrid[r][c];
+                        const endPoint = elevationGrid[flowDirection[r][c].r][flowDirection[r][c].c];
+                        const weight = 0.5 + (accumulation / maxAccumulation) * 4;
+                        const opacity = 0.3 + (accumulation / maxAccumulation) * 0.6;
+                        L.polyline([[startPoint.latitude, startPoint.longitude], [endPoint.latitude, endPoint.longitude]], {
+                            color: `rgba(31, 184, 205, ${opacity})`,
+                            weight: weight * (0.5 + C)
+                        }).addTo(flowPathLayer);
+                    }
+                }
+            }
+        }
+        
+        function drawPoolingAreas(elevationGrid, sinks, flowAccumulation, gridSize) {
+            const streamThreshold = gridSize * 0.1;
+            sinks.forEach(sink => {
+                const accumulation = flowAccumulation[sink.r][sink.c];
+                if (accumulation > streamThreshold) {
+                    const sinkCell = elevationGrid[sink.r][sink.c];
+                    const radius = 10 + Math.sqrt(accumulation) * 2;
+                    L.circle([sinkCell.latitude, sinkCell.longitude], {
+                       radius: radius, color: 'var(--color-primary)', fillColor: 'var(--color-primary)', fillOpacity: 0.4, weight: 1
+                    }).addTo(poolingLayer);
+                }
+            });
+        }
+        
+        function drawMainFlowPath(elevationGrid, flowDirection, selectedCoords, gridSize) {
+             let minDist = Infinity;
+             let startR = 0, startC = 0;
+             for (let r = 0; r < gridSize; r++) {
+                 for (let c = 0; c < gridSize; c++) {
+                     const cell = elevationGrid[r][c];
+                     const dist = Math.sqrt(Math.pow(cell.latitude - selectedCoords.lat, 2) + Math.pow(cell.longitude - selectedCoords.lon, 2));
+                     if (dist < minDist) {
+                         minDist = dist;
+                         startR = r; startC = c;
+                     }
+                 }
+             }
+
+            let path = [];
+            let [curr_r, curr_c] = [startR, startC];
+            if (elevationGrid[curr_r] && elevationGrid[curr_r][curr_c]) {
+                path.push([elevationGrid[curr_r][curr_c].latitude, elevationGrid[curr_r][curr_c].longitude]);
+            }
+
+            while(curr_r >= 0 && curr_r < gridSize && curr_c >= 0 && curr_c < gridSize && flowDirection[curr_r] && flowDirection[curr_r][curr_c] !== null) {
+                const next = flowDirection[curr_r][curr_c];
+                path.push([elevationGrid[next.r][next.c].latitude, elevationGrid[next.r][next.c].longitude]);
+                curr_r = next.r; curr_c = next.c;
+                if (path.length > gridSize * gridSize) break;
+            }
+
+            if(path.length > 1) {
+                L.polyline(path, { color: 'var(--color-error)', weight: 4, opacity: 0.9, dashArray: '5, 10' }).addTo(mainFlowPathLayer);
+            }
+        }
+
+        // --- Run on page load ---
+        init();
+    });
+    </script>
+</body>
+</html>
